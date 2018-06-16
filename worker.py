@@ -12,7 +12,7 @@ class Worker():
         kwargs = {'num_workers': 1, 'pin_memory': True} if self.args.cuda else {}
         self.trainloader = DataLoader(trainset, batch_size=args.batch_size,
                                       **kwargs)
-        self.updateloader = DataLoader(trainset, batch_size=(args.batch_size / 2),
+        self.updateloader = DataLoader(trainset, batch_size=int(args.batch_size / 2),
                                       **kwargs)
         self.optimizer = optimizer
         self.min_delay = avg_delay - delay_sigma
