@@ -1,3 +1,5 @@
+import os
+import shutil
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
@@ -36,6 +38,8 @@ class Master():
         # Initialize Workers
         self.workers_list = self.__assignWorker()
         path = '../logs/'
+        if not os.path.exists(path):
+            os.mkdir(path)
         dset = self.args.dataset
         wnum = '_' + str(self.args.num_workers)
         update = '_' + self.args.gradient_correction
