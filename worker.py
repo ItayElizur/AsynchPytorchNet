@@ -38,7 +38,7 @@ class Worker():
         # Save gradients mean and variace per layer, then send back
         self.grad, self.mean, self.var = net.save_gradients(model)
         delay = random.randint(self.min_delay, self.max_delay)
-        return (delay, self.grad, loss.data[0])
+        return (delay, self.grad, loss.data.item())
 
     def update(self, model, index):
         self.optimizer.zero_grad()
@@ -61,7 +61,7 @@ class Worker():
         _, mean, var = net.save_gradients(model)
         grad = net.update_grad(model, self.grad, self.mean, self.var, mean, var)
         delay = random.randint(self.min_delay / 2, self.max_delay / 2)
-        return (delay, grad, loss.data[0])
+        return (delay, grad, loss.data.item())
 
 
 #def helpPrint(model, mean, var):

@@ -1,5 +1,3 @@
-import os
-import shutil
 import torch
 from torch.autograd import Variable
 import torch.nn as nn
@@ -7,6 +5,7 @@ import torch.optim as optim
 import net
 from torch.utils.data import DataLoader
 from worker import Worker
+from printer import Printer
 from collections import deque
 import hyparams
 
@@ -35,15 +34,9 @@ class Master():
         self.optimizer = optim.SGD(self.model.parameters(), lr=self.args.learning_rate,
                                    momentum=self.args.momentum, nesterov=self.args.nesterov)
 
-        # Initialize Workers
+        # Initialize Workers and Printer
         self.workers_list = self.__assignWorker()
-        path = '../logs/'
-        if not os.path.exists(path):
-            os.mkdir(path)
-        dset = self.args.dataset
-        wnum = '_' + str(self.args.num_workers)
-        update = '_' + self.args.gradient_correction
-        self.file = path + dset + wnum + update + '.log'
+        self.printer = Printer(self.args, len(self.trainset))
 
     def __assignWorker(self):
         workers_list = []
@@ -95,11 +88,12 @@ class Master():
                     batch_num += 1
                     # print results
                     if batch_num % self.args.log_interval == 0:
-                        self.__train_print(epoch, batch_num, latest_loss)
+                        self.printer.train_print(epoch, batch_num, latest_loss)
 
             # Every epoch test results
             self.test()
             batch_num = 0
+        self.printer.show_loss()
 
     def test(self):
         self.model.eval()
@@ -111,27 +105,13 @@ class Master():
             data, target = Variable(data, volatile=True), Variable(target)
             output = self.model(data)
             # sum up batch loss
-            testloss += nn.functional.cross_entropy(output, target, size_average=False).data[0]
+            testloss += nn.functional.cross_entropy(output, target, size_average=False).data.item()
             # get the index of the max log-probability
             pred = output.data.max(1, keepdim=True)[1]
             correct += pred.eq(target.data.view_as(pred)).long().cpu().sum()
 
         testloss /= len(self.testloader.dataset)
-        self.__test_print(testloss, correct, len(self.testloader.dataset))
-
-    def __train_print(self, epoch, batch, loss):
-        message = 'Train Epoch: {}\t[Completed Batches: {}]\tLoss: {:.6f}'
-        message = message.format(epoch, batch, loss)
-        with open(self.file, 'a') as writer:
-            writer.write(message + '\n')
-            print(message)
-
-    def __test_print(self, loss, correct, size):
-        message = '\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'
-        message = message.format(loss, correct, size, 100. * correct / size)
-        with open(self.file, 'a') as writer:
-            writer.write(message)
-            print(message)
+        self.printer.test_print(testloss, correct, len(self.testloader.dataset))
 
 
 if __name__ == "__main__":
