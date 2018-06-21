@@ -1,4 +1,3 @@
-import hyparams
 import torch.nn as nn
 import torchvision
 import torchvision.transforms as transforms
@@ -21,11 +20,22 @@ Transform = {
     ])
 }
 
-
-def randomDelay(args):
-    delay = int(normal(args.mean_delay, args.sigma))
-    delay = args.min_delay if delay < 0 else args.min_delay + delay
-    return min(delay, (args.min_delay + 2 * args.mean_delay))
+Hyperparameters = {
+    'CIFAR10_PARAMS': {
+        'batch_size': 128,
+        'test_batch_size': 100,
+        'epochs': 10,
+        'learning_rate': 0.01,
+        'momentum': 0.9
+    },
+    'MNIST_PARAMS': {
+        'batch_size': 64,
+        'test_batch_size': 1000,
+        'epochs': 5,
+        'learning_rate': 0.01,
+        'momentum': 0.5
+    }
+}
 
 
 class MNISTNet(nn.Module):
@@ -76,7 +86,7 @@ class Dataset(Enum):
         'testset': torchvision.datasets.MNIST(
             root='../data', train=False, download=True,
             transform=Transform['MNIST_TRANSFORM']),
-        'parser': hyparams.getMNISTParser(),
+        'parser': Hyperparameters['MNIST_PARAMS'],
         'net': MNISTNet
         }
         #CIFAR10 Dataset - classified pictures
@@ -87,7 +97,7 @@ class Dataset(Enum):
         'testset': torchvision.datasets.CIFAR10(
             root='../data', train=False, download=True,
             transform=Transform['NORMAL_TRANSFORM']),
-        'parser': hyparams.getCIFAR10Parser(),
+        'parser': Hyperparameters['CIFAR10_PARAMS'],
         'net': CIFARNet
         }
 
@@ -121,7 +131,7 @@ def load_gradients(model, gradient_map):
 def update_grad(model, grad, old_mean, old_var, new_mean, new_var):
     for p in model.parameters():
         delta_grad = (grad[p] - old_mean[p])
-        dvar = new_var[p] / old_var[p].clamp(min=1e-15)
+        dvar = new_var[p] / old_var[p].clamp(min=1e-10)
         grad[p] = (delta_grad * dvar) + new_mean[p]
 
     return grad

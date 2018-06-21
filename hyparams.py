@@ -1,53 +1,51 @@
 import argparse
 
 parser = argparse.ArgumentParser(description='Dataset parser')
-#
-parser.add_argument('dataset', nargs=1, choices=['CIFAR10', 'MNIST'])
-# Input batch size for training
-parser.add_argument('-bs', '--batch-size', type=int, default=-1, metavar='N')
-# Input batch size for testing
-parser.add_argument('-tbs', '--test-batch-size', type=int, default=-1, metavar='N')
+# Working dataset
+parser.add_argument('dataset', nargs=1, choices=['CIFAR10', 'MNIST'],
+                    help='Working dataset')
+# Training batch size
+parser.add_argument('-bs', '--batch-size', type=int, default=-1, metavar='N',
+                    help='Training batch size')
+# Testing batch size
+parser.add_argument('-tbs', '--test-batch-size', type=int, default=-1, metavar='N',
+                    help='Testing batch size')
 # Number of epochs to train
-parser.add_argument('-e', '--epochs', type=int, default=-1, metavar='N')
+parser.add_argument('-e', '--epochs', type=int, default=-1, metavar='N',
+                    help='Number of epochs to train')
 # Learning rate
-parser.add_argument('-lr', '--learning-rate', type=float, default=-1, metavar='LR')
-# SGD momentum
-parser.add_argument('-m', '--momentum', type=float, default=-1, metavar='M')
+parser.add_argument('-lr', '--learning-rate', type=float, default=-1, metavar='LR',
+                    help='Learning rate')
+# Momentum
+parser.add_argument('-m', '--momentum', type=float, default=-1, metavar='M',
+                    help='Momentum')
 # Disables CUDA training
-parser.add_argument('-nc', '--no-cuda', action='store_true')
-# Enables Nesterov training (applies momentum before gradient)
-parser.add_argument('-n', '--nesterov', action='store_false')
-# How many batches to wait before logging training status
-parser.add_argument('-li', '--log-interval', type=int, default=10, metavar='N')
-# What correction to use
-parser.add_argument('-gc', '--gradient-correction', choices=['none', 'worker', 'master'], default='none')
-# How many workers
-parser.add_argument('-nw', '--num-workers', type=int, default=1, metavar='N')
-# Minimum delay of workers
-parser.add_argument('-mind', '--min-delay', type=int, default=20, metavar='N')
-# Mean delay of workers
-parser.add_argument('-meand', '--mean-delay', type=int, default=5, metavar='N')
-# Deviation of delay of workers
-parser.add_argument('-s', '--sigma', type=int, default=2, metavar='N')
-# Distribution space of work for worker
-parser.add_argument('-ud', '--uni-dist', type=int, default=3, metavar='N')
+parser.add_argument('-nc', '--no-cuda', action='store_true',
+                    help='Disables CUDA training')
+# Disables nesterov training (applies momentum before gradient)
+parser.add_argument('-nn', '--no-nesterov', action='store_true',
+                    help='Disables nesterov training')
+# Logging interval between batches
+parser.add_argument('-li', '--log-interval', type=int, default=10, metavar='N',
+                    help='Logging interval between batches')
+# Correction type to use
+parser.add_argument('-gc', '--gradient-correction', choices=['none', 'worker', 'master'], default='none',
+                    help='Correction type to use. Possible options: master, worker, none')
+# Number of workers
+parser.add_argument('-nw', '--num-workers', type=int, default=1, metavar='N',
+                    help='Number of workers')
+# Minimum number of iterations for batch
+parser.add_argument('-mind', '--min-delay', type=int, default=20, metavar='N',
+                    help='Minimum number of iterations for batch')
+# Mean number of iterations for batch
+parser.add_argument('-meand', '--mean-delay', type=int, default=5, metavar='N',
+                    help='Mean number of iterations for batch')
+# Standard Deviation of number of iterations for batch
+parser.add_argument('-s', '--sigma', type=int, default=2, metavar='N',
+                    help='Standard Deviation of number of iterations for batch')
+# Distribution space of batch for worker
+parser.add_argument('-ud', '--uni-dist', type=int, default=3, metavar='N',
+                    help='Distribution space of batch for worker')
 
 
-def getMNISTParser():
-    return {
-        'batch_size': 64,
-        'test_batch_size': 1000,
-        'epochs': 5,
-        'learning_rate': 0.01,
-        'momentum': 0.5
-    }
 
-
-def getCIFAR10Parser():
-    return {
-        'batch_size': 128,
-        'test_batch_size': 100,
-        'epochs': 10,
-        'learning_rate': 0.01,
-        'momentum': 0.9
-    }

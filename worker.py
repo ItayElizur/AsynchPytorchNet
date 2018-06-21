@@ -2,27 +2,19 @@ from torch.autograd import Variable
 from torch import nn
 from torch.utils.data import DataLoader
 from numpy import random
-import itertools
 import net
-from math import isnan
 
 class Worker():
-    def __init__(self, args, trainset, optimizer, avg_delay, delay_sigma):
+    def __init__(self, args, optimizer, avg_delay, delay_sigma):
         self.args = args
-        kwargs = {'num_workers': 1, 'pin_memory': True} if self.args.cuda else {}
-        self.trainloader = DataLoader(trainset, batch_size=args.batch_size,
-                                      **kwargs)
-        self.updateloader = DataLoader(trainset, batch_size=int(args.batch_size / 2),
-                                      **kwargs)
         self.optimizer = optimizer
         self.min_delay = avg_delay - delay_sigma
         self.max_delay = avg_delay + delay_sigma
 
-    def train(self, model, index):
-        self.optimizer.zero_grad()
-
+    def train(self, model, batch):
         # Run Network over one batch and calculate loss
-        data, target = next(itertools.islice(self.trainloader, index, index + 1))
+        self.batch = batch
+        data, target = batch
         # Move to GPU if possible
         if self.args.cuda:
             data, target = data.cuda(), target.cuda()
@@ -33,6 +25,7 @@ class Worker():
         # Calculate loss and gradients
         output = model(data)
         loss = nn.functional.cross_entropy(output, target)  # nll_loss(output, target)
+        self.optimizer.zero_grad()
         loss.backward()
 
         # Save gradients mean and variace per layer, then send back
@@ -40,11 +33,11 @@ class Worker():
         delay = random.randint(self.min_delay, self.max_delay)
         return (delay, self.grad, loss.data.item())
 
-    def update(self, model, index):
-        self.optimizer.zero_grad()
-
-        # Run Network over data batch and calculate loss
-        data, target = next(itertools.islice(self.updateloader, index, index + 1))
+    def update(self, model):
+        # Run Network over one batch and calculate loss
+        data, target = self.batch
+        data, _ = data.split(int(self.args.batch_size/2))
+        target, _ = target.split(int(self.args.batch_size/2))
         # Move to GPU if possible
         if self.args.cuda:
             data, target = data.cuda(), target.cuda()
@@ -54,7 +47,8 @@ class Worker():
 
         # Calculate loss and gradients
         output = model(data)
-        loss = nn.functional.cross_entropy(output, target) # nll_loss(output, target)
+        loss = nn.functional.cross_entropy(output, target)  # nll_loss(output, target)
+        self.optimizer.zero_grad()
         loss.backward()
 
         # Send gradients and delay time
@@ -62,14 +56,3 @@ class Worker():
         grad = net.update_grad(model, self.grad, self.mean, self.var, mean, var)
         delay = random.randint(self.min_delay / 2, self.max_delay / 2)
         return (delay, grad, loss.data.item())
-
-
-#def helpPrint(model, mean, var):
-#    count = 0
-#    with open('../logs/CIFAR10_1.log', 'a') as writer:
-#        for p in model.parameters():
-#            count += 1
-#            if p.grad is not None:
-#                msg = "Batch layer: {} ---- mean: (mean: {}, var: {}) and var: (mean: {}, var:{})"
-#                msg = msg.format(count, mean[p].mean(), mean[p].var(), var[p].mean(), var[p].var())
-#                writer.write(msg + '\n')

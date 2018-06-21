@@ -8,6 +8,7 @@ from worker import Worker
 from printer import Printer
 from collections import deque
 import hyparams
+from numpy.random import normal
 
 
 class Master():
@@ -17,12 +18,14 @@ class Master():
         dataset = net.Dataset[args.dataset]
         vars(args).update({k: dataset.value['parser'][k] for (k, v) in vars(args).items() if v == -1})
         self.args = args
-
+        self.args.nesterov = not self.args.no_nesterov
         self.args.cuda = not self.args.no_cuda and torch.cuda.is_available()
         kwargs = {'num_workers': 1, 'pin_memory': True} if self.args.cuda else {}
 
         # Download training and testing set
-        self.trainset = dataset.value['trainset']
+        trainset = dataset.value['trainset']
+        self.trainloader = DataLoader(trainset, batch_size=args.batch_size,
+                                      **kwargs)
         testset = dataset.value['testset']
         self.testloader = torch.utils.data.DataLoader(
             testset, batch_size=self.args.test_batch_size, shuffle=True, **kwargs)
@@ -36,13 +39,18 @@ class Master():
 
         # Initialize Workers and Printer
         self.workers_list = self.__assignWorker()
-        self.printer = Printer(self.args, len(self.trainset))
+        self.printer = Printer(self.args, len(trainset))
+        print('DONE Initialize')
 
     def __assignWorker(self):
         workers_list = []
         for worker_num in range(self.args.num_workers):
-            worker_delay = net.randomDelay(self.args)
-            worker = Worker(self.args, self.trainset, self.optimizer, worker_delay, self.args.uni_dist)
+            # Calculate mean delay of worker
+            delay = int(normal(args.mean_delay, args.sigma))
+            delay = args.min_delay + max(0, delay)
+            worker_delay = min(delay, (args.min_delay + 2 * args.mean_delay))
+
+            worker = Worker(self.args, self.optimizer, worker_delay, self.args.uni_dist)
             workers_list.append(worker)
 
         return workers_list
@@ -52,10 +60,12 @@ class Master():
         self.rvar = {}
         self.max_delay = self.args.min_delay + 2 * self.args.mean_delay
 
-    def __process_gradient(self, worker, work, batch_num):
+    def __process_gradient(self, worker, work, batch):
         old_delay, gradient, loss = work
+        if (old_delay == 0):
+            return 1, worker.train(self.model, batch)
         if self.args.gradient_correction == 'worker' and old_delay > 0.8 * self.max_delay:
-            return worker.update(self.model, batch_num)
+            return 0, worker.update(self.model)
 
         mean, var = net.load_gradients(self.model, gradient)
         if self.args.gradient_correction == 'master' and old_delay > 0.8 * self.max_delay:
@@ -63,37 +73,34 @@ class Master():
         else:
             self.rmean, self.rvar = net.update_meanvar(self.model, self.rmean, self.rvar, mean, var)
         self.optimizer.step()
-        self.optimizer.zero_grad()
         # Calculate new gradient and delay
-        return worker.train(self.model, batch_num)
+        return 1, worker.train(self.model, batch)
 
     def train(self):
         self.__init_params()
-        delay_arr = deque([[] for i in range(self.max_delay + self.args.uni_dist + 1)])
-        batch_num = 0
-        self.model.train()
-        for i, worker in enumerate(self.workers_list):
-            result = worker.train(self.model, batch_num)
-            delay_arr[result[0]] += [(worker, result)]
-            batch_num += 1
+        delay_arr = deque([deque([]) for i in range(self.max_delay + self.args.uni_dist + 1)])
+        delay_arr[0] += [(worker, (0, None, 0)) for worker in self.workers_list]
 
         for epoch in range(1, self.args.epochs + 1):
+            self.model.train()
             latest_loss = 0
-            while batch_num < int(len(self.trainset) / self.args.batch_size):
-                delay_arr.append([])
-                for worker, work in delay_arr.popleft():
+            for batch_num, batch in enumerate(self.trainloader):
+                trained_batch = 0
+                while trained_batch == 0:
+                    while delay_arr[0] == deque([]):
+                        delay_arr.rotate(-1)
+
+                    worker, work = delay_arr[0].popleft()
                     latest_loss = work[2]
-                    new_result = self.__process_gradient(worker, work, batch_num)
+                    trained_batch, new_result = self.__process_gradient(worker, work, batch)
                     delay_arr[new_result[0]] += [(worker, new_result)]
-                    batch_num += 1
-                    # print results
-                    if batch_num % self.args.log_interval == 0:
-                        self.printer.train_print(epoch, batch_num, latest_loss)
+                # print results
+                if batch_num % self.args.log_interval == 0:
+                    self.printer.train_print(epoch, batch_num, latest_loss)
 
             # Every epoch test results
             self.test()
             batch_num = 0
-        self.printer.show_loss()
 
     def test(self):
         self.model.eval()
@@ -102,7 +109,7 @@ class Master():
         for data, target in self.testloader:
             if self.args.cuda:
                 data, target = data.cuda(), target.cuda()
-            data, target = Variable(data, volatile=True), Variable(target)
+            data, target = Variable(data), Variable(target)
             output = self.model(data)
             # sum up batch loss
             testloss += nn.functional.cross_entropy(output, target, size_average=False).data.item()

@@ -1,20 +1,27 @@
-import matplotlib.pyplot as plt
 import os
 
 
 class Printer():
     def __init__(self, args, trainlen):
         self.epoch_size = int(trainlen / args.batch_size)
-        path = '../logs/'
+        path = './logs/'
         if not os.path.exists(path):
             os.mkdir(path)
         dset = args.dataset
         wnum = '_' + str(args.num_workers)
         update = '_' + args.gradient_correction
-        self.file = path + dset + wnum + update + '.log'
+        self.file = path + dset + wnum + update
+        if (os.path.isfile(self.file + '.log')):
+            self.file += ' (1)'
+            count = 1
+            while(os.path.isfile(self.file + '.log')):
+                count += 1
+                self.file = self.file[:-2] + str(count) + ')'
+        self.file += '.log'
 
     def train_print(self, epoch, batch, loss):
-        plt.scatter(epoch * self.epoch_size + batch, loss)
+        if batch == 0:
+            return
 
         message = 'Train Epoch: {}\t[Completed Batches: {}]\tLoss: {:.6f}'
         message = message.format(epoch, batch, loss)
@@ -29,5 +36,12 @@ class Printer():
             writer.write(message)
             print(message)
 
-    def show_loss(self):
-        plt.show()
+#    def helpPrint(self, model, mean, var):
+#       count = 0
+#       with open(self.file, 'a') as writer:
+#        for p in model.parameters():
+#            count += 1
+#            if p.grad is not None:
+#                msg = "Batch layer: {} ---- mean: (mean: {}, var: {}) and var: (mean: {}, var:{})"
+#                msg = msg.format(count, mean[p].mean(), mean[p].var(), var[p].mean(), var[p].var())
+#                writer.write(msg + '\n')
