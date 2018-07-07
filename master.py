@@ -24,22 +24,28 @@ class Master():
 
         # Download training and testing set
         trainset = dataset.value['trainset']
-        self.trainloader = DataLoader(trainset, batch_size=args.batch_size,
-                                      **kwargs)
+        self.trainloader = DataLoader(
+            trainset, batch_size=args.batch_size, shuffle=True, **kwargs)
         testset = dataset.value['testset']
         self.testloader = torch.utils.data.DataLoader(
-            testset, batch_size=self.args.test_batch_size, shuffle=True, **kwargs)
+            testset, batch_size=self.args.tbatch_size, shuffle=True, **kwargs)
 
         # Initialize model
         self.model = dataset.value['net']()
         if self.args.cuda:
             self.model.cuda()
-        self.optimizer = optim.SGD(self.model.parameters(), lr=self.args.learning_rate,
-                                   momentum=self.args.momentum, nesterov=self.args.nesterov)
+        self.optimizer = optim.SGD(
+            self.model.parameters(), lr=self.args.learning_rate,
+            momentum=self.args.momentum, nesterov=self.args.nesterov,
+            weight_decay=self.args.weight_decay)
+        self.scheduler = optim.lr_scheduler.MultiStepLR(
+            self.optimizer, milestones=self.args.lr_milestones,
+            gamma=self.args.gamma)
 
         # Initialize Workers and Printer
         self.workers_list = self.__assignWorker()
         self.printer = Printer(self.args, len(trainset))
+        self.printer.args_print()
         print('DONE Initialize')
 
     def __assignWorker(self):
@@ -47,8 +53,8 @@ class Master():
         for worker_num in range(self.args.num_workers):
             # Calculate mean delay of worker
             delay = int(normal(args.mean_delay, args.sigma))
-            delay = args.min_delay + max(0, delay)
-            worker_delay = min(delay, (args.min_delay + 2 * args.mean_delay))
+            delay = min(delay, 2 * args.mean_delay)
+            worker_delay = args.min_delay + max(0, delay)
 
             worker = Worker(self.args, self.optimizer, worker_delay, self.args.uni_dist)
             workers_list.append(worker)
@@ -76,6 +82,20 @@ class Master():
         # Calculate new gradient and delay
         return 1, worker.train(self.model, batch)
 
+    def __process_gradient2(self, epoch, worker, work, batch):
+        old_delay, gradient, mean, var, loss = work
+        if (old_delay == 0):
+            return 1, worker.train2(self.model, batch, self.rmean, self.rvar)
+
+        nmean, nvar = net.load_gradients(self.model, gradient)
+        if self.args.gradient_correction == 'master' and old_delay > 0.8 * self.max_delay and epoch > 1:
+            gradient = net.update_grad(self.model, gradient, mean, var, self.rmean, self.rvar)
+        else:
+            self.rmean, self.rvar = net.update_meanvar(self.model, self.rmean, self.rvar, nmean, nvar)
+        self.optimizer.step()
+        # Calculate new gradient and delay
+        return 1, worker.train2(self.model, batch, self.rmean, self.rvar)
+
     def train(self):
         self.__init_params()
         delay_arr = deque([deque([]) for i in range(self.max_delay + self.args.uni_dist + 1)])
@@ -83,6 +103,7 @@ class Master():
 
         for epoch in range(1, self.args.epochs + 1):
             self.model.train()
+            self.scheduler.step()
             latest_loss = 0
             for batch_num, batch in enumerate(self.trainloader):
                 trained_batch = 0

@@ -33,6 +33,28 @@ class Worker():
         delay = random.randint(self.min_delay, self.max_delay)
         return (delay, self.grad, loss.data.item())
 
+    def train2(self, model, batch, rmean, rvar):
+        # Run Network over one batch and calculate loss
+        self.batch = batch
+        data, target = batch
+        # Move to GPU if possible
+        if self.args.cuda:
+            data, target = data.cuda(), target.cuda()
+
+        # Turn data and targer into Variables for later gradient calc
+        data, target = Variable(data), Variable(target)
+
+        # Calculate loss and gradients
+        output = model(data)
+        loss = nn.functional.cross_entropy(output, target)  # nll_loss(output, target)
+        self.optimizer.zero_grad()
+        loss.backward()
+
+        # Save gradients mean and variace per layer, then send back
+        self.grad, _, _ = net.save_gradients(model)
+        delay = random.randint(self.min_delay, self.max_delay)
+        return (delay, self.grad, rmean, rvar, loss.data.item())
+
     def update(self, model):
         # Run Network over one batch and calculate loss
         data, target = self.batch
@@ -53,6 +75,6 @@ class Worker():
 
         # Send gradients and delay time
         _, mean, var = net.save_gradients(model)
-        grad = net.update_grad(model, self.grad, self.mean, self.var, mean, var)
+        grad = net.update_grad2(model, self.grad, self.mean, self.var, mean, var)
         delay = random.randint(self.min_delay / 2, self.max_delay / 2)
         return (delay, grad, loss.data.item())

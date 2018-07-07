@@ -4,6 +4,7 @@ import torchvision.transforms as transforms
 import torch.nn.functional as F
 from enum import Enum
 from numpy.random import normal
+import resnet_cifar
 
 
 # Define a transformation
@@ -23,14 +24,14 @@ Transform = {
 Hyperparameters = {
     'CIFAR10_PARAMS': {
         'batch_size': 128,
-        'test_batch_size': 100,
+        'tbatch_size': 100,
         'epochs': 10,
         'learning_rate': 0.01,
         'momentum': 0.9
     },
     'MNIST_PARAMS': {
         'batch_size': 64,
-        'test_batch_size': 1000,
+        'tbatch_size': 1000,
         'epochs': 5,
         'learning_rate': 0.01,
         'momentum': 0.5
@@ -98,7 +99,7 @@ class Dataset(Enum):
             root='../data', train=False, download=True,
             transform=Transform['NORMAL_TRANSFORM']),
         'parser': Hyperparameters['CIFAR10_PARAMS'],
-        'net': CIFARNet
+        'net': resnet_cifar.resnet20_cifar
         }
 
 
@@ -136,12 +137,18 @@ def update_grad(model, grad, old_mean, old_var, new_mean, new_var):
 
     return grad
 
+def update_grad2(model, grad, old_mean, old_var, new_mean, new_var):
+    for p in model.parameters():
+        delta_grad = (grad[p] - old_mean[p])
+        grad[p] = delta_grad + new_mean[p]
+
+    return grad
 
 def update_meanvar(model, rmean, rvar, new_mean, new_var):
     if rmean == {}:
         for p in model.parameters():
-            rmean[p] = 0.1 * new_mean[p]
-            rvar[p] = 0.1 * new_var[p]
+            rmean[p] = new_mean[p]
+            rvar[p] = new_var[p]
     for p in model.parameters():
         rmean[p] = 0.9 * rmean[p] + 0.1 * new_mean[p]
         rvar[p] = 0.9 * rvar[p] + 0.1 * new_var[p]
